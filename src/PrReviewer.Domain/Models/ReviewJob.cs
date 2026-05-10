@@ -1,3 +1,6 @@
 namespace PrReviewer.Domain.Models;
 
-public sealed record ReviewJob(PullRequestRef Pr, DateTimeOffset EnqueuedAt);
+public sealed record ReviewJob(
+    PullRequestRef Pr,
+    string HeadCommitSha,
+    DateTimeOffset EnqueuedAt);

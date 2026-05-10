@@ -18,6 +18,21 @@ internal sealed class PullRequestPayload
 
     [JsonPropertyName("title")]
     public string? Title { get; set; }
+
+    [JsonPropertyName("source")]
+    public PullRequestSourcePayload? Source { get; set; }
+}
+
+internal sealed class PullRequestSourcePayload
+{
+    [JsonPropertyName("commit")]
+    public CommitPayload? Commit { get; set; }
+}
+
+internal sealed class CommitPayload
+{
+    [JsonPropertyName("hash")]
+    public string? Hash { get; set; }
 }
 
 internal sealed class RepositoryPayload
