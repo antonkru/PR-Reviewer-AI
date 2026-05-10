@@ -34,4 +34,11 @@ app.MapBitbucketWebhook();
 
 app.MapGet("/", () => Results.Ok(new { service = "PR-Reviewer-AI", status = "ok" }));
 
+app.MapGet("/health", () => Results.Ok(new
+{
+    service = "PR-Reviewer-AI",
+    status = "ok",
+    timestamp = DateTimeOffset.UtcNow,
+}));
+
 app.Run();

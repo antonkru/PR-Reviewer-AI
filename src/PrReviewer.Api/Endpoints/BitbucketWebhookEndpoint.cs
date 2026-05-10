@@ -31,9 +31,13 @@ public static class BitbucketWebhookEndpoint
         var logger = loggerFactory.CreateLogger("BitbucketWebhook");
 
         var eventKey = context.Request.Headers["X-Event-Key"].ToString();
+        var deliveryId = context.Request.Headers["X-Request-UUID"].ToString();
+
         if (!HandledEventKeys.Contains(eventKey))
         {
-            logger.LogDebug("Ignoring Bitbucket event {EventKey}", eventKey);
+            logger.LogInformation(
+                "Webhook received DeliveryId={DeliveryId} EventKey={EventKey} Outcome=Ignored",
+                deliveryId, eventKey);
             return Results.NoContent();
         }
 
@@ -44,7 +48,9 @@ public static class BitbucketWebhookEndpoint
         var signature = context.Request.Headers["X-Hub-Signature"].ToString();
         if (!validator.Validate(rawBody, signature))
         {
-            logger.LogWarning("Rejected Bitbucket webhook for {EventKey}: invalid signature", eventKey);
+            logger.LogWarning(
+                "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=BadSignature",
+                deliveryId, eventKey);
             return Results.Unauthorized();
         }
 
@@ -55,28 +61,43 @@ public static class BitbucketWebhookEndpoint
         }
         catch (JsonException ex)
         {
-            logger.LogWarning(ex, "Rejected Bitbucket webhook for {EventKey}: malformed JSON", eventKey);
+            logger.LogWarning(
+                ex,
+                "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MalformedJson",
+                deliveryId, eventKey);
             return Results.BadRequest();
         }
 
         var workspace = payload?.Repository?.Workspace?.Slug;
         var repo = payload?.Repository?.Name;
         var prId = payload?.PullRequest?.Id ?? 0;
+        var headSha = payload?.PullRequest?.Source?.Commit?.Hash;
 
         if (string.IsNullOrEmpty(workspace) || string.IsNullOrEmpty(repo) || prId <= 0)
         {
             logger.LogWarning(
-                "Rejected Bitbucket webhook for {EventKey}: missing workspace/repo/prId (workspace={Workspace} repo={Repo} prId={PrId})",
-                eventKey, workspace, repo, prId);
+                "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingRefs " +
+                "(workspace={Workspace} repo={Repo} prId={PrId})",
+                deliveryId, eventKey, workspace, repo, prId);
+            return Results.BadRequest();
+        }
+
+        if (string.IsNullOrEmpty(headSha))
+        {
+            logger.LogWarning(
+                "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingSha " +
+                "for {Workspace}/{Repo}#{PrId} — cannot dedup",
+                deliveryId, eventKey, workspace, repo, prId);
             return Results.BadRequest();
         }
 
         var prRef = new PullRequestRef(workspace, repo, prId, payload?.PullRequest?.Title);
-        await queue.WriteAsync(new ReviewJob(prRef, DateTimeOffset.UtcNow), ct);
+        await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation(
-            "Enqueued review for {EventKey} {Workspace}/{Repo}#{PrId} ({Title})",
-            eventKey, workspace, repo, prId, prRef.Title);
+            "Webhook enqueued DeliveryId={DeliveryId} EventKey={EventKey} Outcome=Enqueued " +
+            "{Workspace}/{Repo}#{PrId} sha={Sha} ({Title})",
+            deliveryId, eventKey, workspace, repo, prId, headSha, prRef.Title);
 
         return Results.NoContent();
     }
