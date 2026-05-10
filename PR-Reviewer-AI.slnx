@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PrReviewer.Agents/PrReviewer.Agents.csproj" />
+    <Project Path="src/PrReviewer.Api/PrReviewer.Api.csproj" />
+    <Project Path="src/PrReviewer.Domain/PrReviewer.Domain.csproj" />
+  </Folder>
+</Solution>
