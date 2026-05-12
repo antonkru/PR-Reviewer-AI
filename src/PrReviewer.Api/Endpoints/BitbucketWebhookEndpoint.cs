@@ -68,7 +68,7 @@ public static class BitbucketWebhookEndpoint
                 "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MalformedJson",
                 deliveryId, eventKey);
             return Results.Problem(
-                detail: ex.Message,
+                detail: "Webhook payload rejected Outcome=MalformedJson",
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Malformed JSON");
         }

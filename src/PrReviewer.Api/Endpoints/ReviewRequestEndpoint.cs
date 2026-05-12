@@ -44,7 +44,7 @@ public static class ReviewRequestEndpoint
         {
             logger.LogWarning(ex, "Review request rejected Outcome=MalformedJson");
             return Results.Problem(
-                detail: ex.Message,
+                detail: "Review request rejected Outcome=MalformedJson",
                 statusCode: StatusCodes.Status400BadRequest,
                 title: "Malformed JSON");
         }
@@ -52,7 +52,7 @@ public static class ReviewRequestEndpoint
         {
             logger.LogWarning(ex, "Review request rejected Outcome=UnsupportedContentType");
             return Results.Problem(
-                detail: ex.Message,
+                detail: "Review request rejected Outcome=UnsupportedContentType",
                 statusCode: StatusCodes.Status415UnsupportedMediaType,
                 title: "Unsupported content type");
         }
