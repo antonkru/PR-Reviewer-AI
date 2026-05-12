@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json.Serialization;
 using PrReviewer.Agents;
 using PrReviewer.Api.Bitbucket;
 using PrReviewer.Api.Endpoints;
@@ -14,11 +15,19 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        builder.Services.AddOptions<ApiOptions>()
+            .Bind(builder.Configuration.GetSection(ApiOptions.SectionName));
+
         builder.Services.AddOptions<BitbucketOptions>()
             .Bind(builder.Configuration.GetSection(BitbucketOptions.SectionName));
 
         builder.Services.AddOptions<GitHubOptions>()
             .Bind(builder.Configuration.GetSection(GitHubOptions.SectionName));
+
+        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(options =>
+        {
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        });
 
         builder.Services.AddSingleton<BitbucketWebhookSignatureValidator>();
         builder.Services.AddSingleton<GitHubWebhookSignatureValidator>();
@@ -58,6 +67,7 @@ public class Program
 
         app.MapBitbucketWebhook();
         app.MapGitHubWebhook();
+        app.MapReviewRequest();
 
         app.MapGet("/", () => Results.Redirect("/health"));
 
