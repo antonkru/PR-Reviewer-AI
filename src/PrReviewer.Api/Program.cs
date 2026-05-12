@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using PrReviewer.Agents;
 using PrReviewer.Api.Bitbucket;
 using PrReviewer.Api.Endpoints;
@@ -23,11 +22,6 @@ public class Program
 
         builder.Services.AddOptions<ApiOptions>()
             .Bind(builder.Configuration.GetSection(ApiOptions.SectionName));
-
-        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(options =>
-        {
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-        });
 
         builder.Services.AddSingleton<BitbucketWebhookSignatureValidator>();
         builder.Services.AddSingleton<GitHubWebhookSignatureValidator>();

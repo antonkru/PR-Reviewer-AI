@@ -50,10 +50,17 @@ public static class ReviewRequestEndpoint
             return Results.BadRequest();
         }
 
-        if (request.Provider is null || !Enum.IsDefined(request.Provider.Value))
+        if (string.IsNullOrEmpty(request.Provider))
+        {
+            logger.LogWarning("Review request rejected Outcome=MissingProvider");
+            return Results.BadRequest();
+        }
+
+        if (!Enum.TryParse<Provider>(request.Provider, ignoreCase: true, out var provider)
+            || !Enum.IsDefined(provider))
         {
             logger.LogWarning(
-                "Review request rejected Outcome=MissingOrUnknownProvider Provider={Provider}",
+                "Review request rejected Outcome=UnknownProvider Provider={Provider}",
                 request.Provider);
             return Results.BadRequest();
         }
@@ -62,11 +69,10 @@ public static class ReviewRequestEndpoint
         {
             logger.LogWarning(
                 "Review request rejected Outcome=MissingRefs (provider={Provider} owner={Owner} repo={Repo} prId={PrId})",
-                request.Provider, request.Owner, request.Repo, request.PrId);
+                provider, request.Owner, request.Repo, request.PrId);
             return Results.BadRequest();
         }
 
-        var provider = request.Provider.Value;
         var headSha = string.IsNullOrEmpty(request.HeadSha) ? null : request.HeadSha;
         var prRef = new PullRequestRef(request.Owner, request.Repo, request.PrId, request.Title, provider);
         await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
@@ -119,7 +125,7 @@ public static class ReviewRequestEndpoint
     }
 
     private sealed record ReviewRequest(
-        Provider? Provider,
+        string? Provider,
         string Owner,
         string Repo,
         int PrId,
