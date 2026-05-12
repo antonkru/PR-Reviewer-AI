@@ -14,7 +14,8 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        if (string.IsNullOrEmpty(builder.Configuration[$"{ApiOptions.SectionName}:{nameof(ApiOptions.AccessToken)}"]))
+        if (!builder.Environment.IsDevelopment() 
+            && string.IsNullOrEmpty(builder.Configuration[$"{ApiOptions.SectionName}:{nameof(ApiOptions.AccessToken)}"]))
         {
             throw new InvalidOperationException(
                 $"{ApiOptions.SectionName}:{nameof(ApiOptions.AccessToken)} must be configured outside the Development environment.");
