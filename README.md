@@ -31,7 +31,7 @@ References: `Api -> Agents -> Domain`. Provider-specific code lives only in `Api
 - .NET 10 SDK
 - An OpenAI API key
 - For Bitbucket: a Bitbucket Cloud Repository (or Workspace) Access Token with `pullrequest:write` scope
-- For GitHub: a Personal Access Token (fine-grained recommended) with **Pull requests: Read and write** on the target repo(s)
+- For GitHub: a Personal Access Token (fine-grained recommended) with **Pull requests: Read and write** and **Contents: Read** on the target repo(s) — the diff media type is gated on Contents, not Pull requests
 - A way to expose `http://localhost:5279` to the provider — Visual Studio Dev Tunnels or ngrok
 
 You only need to configure the provider(s) you actually use. Unconfigured webhooks will log a "secret not configured" warning and accept any signature until you set one.
