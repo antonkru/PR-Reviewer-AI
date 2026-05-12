@@ -11,7 +11,7 @@ public sealed class ReviewBackgroundServiceTests
     private const string OldSha = "fedcba9876543210fedcba9876543210fedcba98";
 
     private static readonly PullRequestRef SamplePr =
-        new("acme", "widgets", 42, "Add widget");
+        new("acme", "widgets", 42, "Add widget", Provider.Bitbucket);
 
     [Fact]
     public async Task Fetches_diff_runs_review_and_posts_comment_with_marker()
@@ -133,13 +133,47 @@ public sealed class ReviewBackgroundServiceTests
         Assert.StartsWith("ok", posted.Markdown);
     }
 
+    [Fact]
+    public async Task Dispatches_to_correct_client_per_job_provider()
+    {
+        var queue = new FakeReviewQueue();
+        var bitbucket = new FakeSourceControlClient { DiffToReturn = "bb-diff" };
+        var github = new FakeSourceControlClient { DiffToReturn = "gh-diff" };
+        var factory = new FakeSourceControlClientFactory();
+        factory.Clients[Provider.Bitbucket] = bitbucket;
+        factory.Clients[Provider.GitHub] = github;
+        var reviewer = new FakeReviewerAgent { Response = new ReviewResult("ok", false) };
+
+        var bbPr = new PullRequestRef("acme", "widgets", 1, null, Provider.Bitbucket);
+        var ghPr = new PullRequestRef("acme", "widgets", 2, null, Provider.GitHub);
+
+        await queue.WriteAsync(new ReviewJob(bbPr, Sha, DateTimeOffset.UtcNow));
+        await queue.WriteAsync(new ReviewJob(ghPr, Sha, DateTimeOffset.UtcNow));
+        queue.Complete();
+
+        await RunUntilDrained(queue, factory, reviewer);
+
+        var bbPosted = Assert.Single(bitbucket.PostedComments);
+        Assert.Equal(Provider.Bitbucket, bbPosted.Pr.Provider);
+        var ghPosted = Assert.Single(github.PostedComments);
+        Assert.Equal(Provider.GitHub, ghPosted.Pr.Provider);
+    }
+
     private static async Task RunUntilDrained(
         FakeReviewQueue queue,
         FakeSourceControlClient sourceControl,
         FakeReviewerAgent reviewer)
     {
+        await RunUntilDrained(queue, FakeSourceControlClientFactory.ForAll(sourceControl), reviewer);
+    }
+
+    private static async Task RunUntilDrained(
+        FakeReviewQueue queue,
+        FakeSourceControlClientFactory factory,
+        FakeReviewerAgent reviewer)
+    {
         var service = new ReviewBackgroundService(
-            queue, sourceControl, reviewer,
+            queue, factory, reviewer,
             NullLogger<ReviewBackgroundService>.Instance);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));

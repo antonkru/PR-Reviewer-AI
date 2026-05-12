@@ -26,7 +26,7 @@ public sealed class BitbucketClient : ISourceControlClient
         // Bitbucket 302-redirects this endpoint to a download URL on a different host.
         // HttpClient drops the Authorization header on cross-host redirects, so auto-redirect
         // is disabled at the handler and we follow hops manually to keep the Bearer token attached.
-        Uri current = new(_http.BaseAddress!, $"repositories/{pr.Workspace}/{pr.RepoSlug}/pullrequests/{pr.PrId}/diff");
+        Uri current = new(_http.BaseAddress!, $"repositories/{pr.Owner}/{pr.RepoSlug}/pullrequests/{pr.PrId}/diff");
         for (var hop = 0; hop < MaxRedirectHops; hop++)
         {
             using var response = await _http.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
@@ -48,7 +48,7 @@ public sealed class BitbucketClient : ISourceControlClient
         var results = new List<PullRequestComment>();
         Uri? current = new(
             _http.BaseAddress!,
-            $"repositories/{pr.Workspace}/{pr.RepoSlug}/pullrequests/{pr.PrId}/comments?pagelen={CommentsPageLen}");
+            $"repositories/{pr.Owner}/{pr.RepoSlug}/pullrequests/{pr.PrId}/comments?pagelen={CommentsPageLen}");
 
         for (var page = 0; page < MaxCommentPages && current is not null; page++)
         {
@@ -73,7 +73,7 @@ public sealed class BitbucketClient : ISourceControlClient
 
     public async Task PostPrCommentAsync(PullRequestRef pr, string markdown, CancellationToken ct)
     {
-        var url = $"repositories/{pr.Workspace}/{pr.RepoSlug}/pullrequests/{pr.PrId}/comments";
+        var url = $"repositories/{pr.Owner}/{pr.RepoSlug}/pullrequests/{pr.PrId}/comments";
         var body = new { content = new { raw = markdown } };
         using var response = await _http.PostAsJsonAsync(url, body, ct);
         response.EnsureSuccessStatusCode();

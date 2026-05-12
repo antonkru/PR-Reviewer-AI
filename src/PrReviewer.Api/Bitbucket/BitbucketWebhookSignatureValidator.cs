@@ -1,0 +1,37 @@
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using PrReviewer.Api.Webhooks;
+
+namespace PrReviewer.Api.Bitbucket;
+
+public sealed class BitbucketWebhookSignatureValidator
+{
+    private readonly BitbucketOptions _options;
+    private readonly ILogger<BitbucketWebhookSignatureValidator> _logger;
+    private bool _missingSecretWarningLogged;
+
+    public BitbucketWebhookSignatureValidator(
+        IOptions<BitbucketOptions> options,
+        ILogger<BitbucketWebhookSignatureValidator> logger)
+    {
+        _options = options.Value;
+        _logger = logger;
+    }
+
+    public bool Validate(byte[] rawBody, string? signatureHeader)
+    {
+        if (string.IsNullOrEmpty(_options.WebhookSecret))
+        {
+            if (!_missingSecretWarningLogged)
+            {
+                _logger.LogWarning(
+                    "Bitbucket:WebhookSecret is not configured — webhook signatures will not be verified. " +
+                    "Set the secret via user-secrets or environment for production.");
+                _missingSecretWarningLogged = true;
+            }
+            return true;
+        }
+
+        return HmacSha256SignatureVerifier.Verify(rawBody, signatureHeader, _options.WebhookSecret);
+    }
+}
