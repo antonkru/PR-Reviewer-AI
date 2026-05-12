@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using FluentValidation;
 using Microsoft.Extensions.Options;
 using PrReviewer.Api.Infrastructure;
 using PrReviewer.Domain.Abstractions;
@@ -21,6 +22,7 @@ public static class ReviewRequestEndpoint
     private static async Task<IResult> HandleAsync(
         HttpContext context,
         IOptions<ApiOptions> apiOptions,
+        IValidator<ReviewRequest> validator,
         IReviewQueue queue,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
@@ -41,40 +43,38 @@ public static class ReviewRequestEndpoint
         catch (JsonException ex)
         {
             logger.LogWarning(ex, "Review request rejected Outcome=MalformedJson");
-            return Results.BadRequest();
+            return Results.Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Malformed JSON");
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Review request rejected Outcome=UnsupportedContentType");
+            return Results.Problem(
+                detail: ex.Message,
+                statusCode: StatusCodes.Status415UnsupportedMediaType,
+                title: "Unsupported content type");
         }
 
         if (request is null)
         {
             logger.LogWarning("Review request rejected Outcome=EmptyBody");
-            return Results.BadRequest();
+            return Results.NoContent();
         }
 
-        if (string.IsNullOrEmpty(request.Provider))
-        {
-            logger.LogWarning("Review request rejected Outcome=MissingProvider");
-            return Results.BadRequest();
-        }
-
-        if (!Enum.TryParse<Provider>(request.Provider, ignoreCase: true, out var provider)
-            || !Enum.IsDefined(provider))
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
         {
             logger.LogWarning(
-                "Review request rejected Outcome=UnknownProvider Provider={Provider}",
-                request.Provider);
-            return Results.BadRequest();
+                "Review request rejected Outcome=InvalidPayload Errors={Errors}",
+                string.Join("; ", validation.Errors.Select(e => $"{e.PropertyName}: {e.ErrorMessage}")));
+            return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        if (string.IsNullOrEmpty(request.Owner) || string.IsNullOrEmpty(request.Repo) || request.PrId <= 0)
-        {
-            logger.LogWarning(
-                "Review request rejected Outcome=MissingRefs (provider={Provider} owner={Owner} repo={Repo} prId={PrId})",
-                provider, request.Owner, request.Repo, request.PrId);
-            return Results.BadRequest();
-        }
-
+        var provider = Enum.Parse<Provider>(request.Provider!, ignoreCase: true);
         var headSha = string.IsNullOrEmpty(request.HeadSha) ? null : request.HeadSha;
-        var prRef = new PullRequestRef(request.Owner, request.Repo, request.PrId, request.Title, provider);
+        var prRef = new PullRequestRef(request.Owner!, request.Repo!, request.PrId, request.Title, provider);
         await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation(
@@ -124,11 +124,4 @@ public static class ReviewRequestEndpoint
         }
     }
 
-    private sealed record ReviewRequest(
-        string? Provider,
-        string Owner,
-        string Repo,
-        int PrId,
-        string? HeadSha,
-        string? Title);
 }

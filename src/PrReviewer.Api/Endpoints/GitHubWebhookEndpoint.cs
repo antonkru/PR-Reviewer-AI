@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FluentValidation;
 using PrReviewer.Api.GitHub;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
@@ -26,7 +27,8 @@ public static class GitHubWebhookEndpoint
 
     private static async Task<IResult> HandleAsync(
         HttpContext context,
-        GitHubWebhookSignatureValidator validator,
+        GitHubWebhookSignatureValidator signatureValidator,
+        IValidator<GitHubWebhookPayload> payloadValidator,
         IReviewQueue queue,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
@@ -49,7 +51,7 @@ public static class GitHubWebhookEndpoint
         var rawBody = ms.ToArray();
 
         var signature = context.Request.Headers["X-Hub-Signature-256"].ToString();
-        if (!validator.Validate(rawBody, signature))
+        if (!signatureValidator.Validate(rawBody, signature))
         {
             logger.LogWarning(
                 "Webhook rejected Provider=GitHub DeliveryId={DeliveryId} Event={Event} Outcome=BadSignature",
@@ -80,30 +82,22 @@ public static class GitHubWebhookEndpoint
             return Results.NoContent();
         }
 
-        var owner = payload?.Repository?.Owner?.Login;
-        var repo = payload?.Repository?.Name;
-        var prId = payload?.PullRequest?.Number ?? 0;
-        var headSha = payload?.PullRequest?.Head?.Sha;
-
-        if (string.IsNullOrEmpty(owner) || string.IsNullOrEmpty(repo) || prId <= 0)
+        var validation = await payloadValidator.ValidateAsync(payload!, ct);
+        if (!validation.IsValid)
         {
             logger.LogWarning(
-                "Webhook rejected Provider=GitHub DeliveryId={DeliveryId} Event={Event} Outcome=MissingRefs " +
-                "(owner={Owner} repo={Repo} prId={PrId})",
-                deliveryId, eventName, owner, repo, prId);
-            return Results.BadRequest();
+                "Webhook rejected Provider=GitHub DeliveryId={DeliveryId} Event={Event} Outcome=InvalidPayload Errors={Errors}",
+                deliveryId, eventName,
+                string.Join("; ", validation.Errors.Select(e => $"{e.PropertyName}: {e.ErrorMessage}")));
+            return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        if (string.IsNullOrEmpty(headSha))
-        {
-            logger.LogWarning(
-                "Webhook rejected Provider=GitHub DeliveryId={DeliveryId} Event={Event} Outcome=MissingSha " +
-                "for {Owner}/{Repo}#{PrId} — cannot dedup",
-                deliveryId, eventName, owner, repo, prId);
-            return Results.BadRequest();
-        }
+        var owner = payload!.Repository!.Owner!.Login!;
+        var repo = payload.Repository.Name!;
+        var prId = payload.PullRequest!.Number;
+        var headSha = payload.PullRequest.Head!.Sha!;
 
-        var prRef = new PullRequestRef(owner, repo, prId, payload?.PullRequest?.Title, Provider.GitHub);
+        var prRef = new PullRequestRef(owner, repo, prId, payload.PullRequest.Title, Provider.GitHub);
         await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation(

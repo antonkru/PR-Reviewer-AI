@@ -1,3 +1,4 @@
+using FluentValidation;
 using PrReviewer.Agents;
 using PrReviewer.Api.Bitbucket;
 using PrReviewer.Api.Endpoints;
@@ -26,6 +27,10 @@ public class Program
         builder.Services.AddSingleton<BitbucketWebhookSignatureValidator>();
         builder.Services.AddSingleton<GitHubWebhookSignatureValidator>();
         builder.Services.AddSingleton<IReviewQueue, ChannelReviewQueue>();
+
+        builder.Services.AddSingleton<IValidator<WebhookPayload>, BitbucketWebhookPayloadValidator>();
+        builder.Services.AddSingleton<IValidator<GitHubWebhookPayload>, GitHubWebhookPayloadValidator>();
+        builder.Services.AddSingleton<IValidator<ReviewRequest>, ReviewRequestValidator>();
 
         builder.Services.AddSourceControlClients(builder.Configuration);
         builder.Services.AddReviewerAgents(builder.Configuration);
