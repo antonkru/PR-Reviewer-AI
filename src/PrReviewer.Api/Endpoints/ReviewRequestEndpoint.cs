@@ -50,10 +50,10 @@ public static class ReviewRequestEndpoint
             return Results.BadRequest();
         }
 
-        if (!Enum.IsDefined(request.Provider))
+        if (request.Provider is null || !Enum.IsDefined(request.Provider.Value))
         {
             logger.LogWarning(
-                "Review request rejected Outcome=UnknownProvider Provider={Provider}",
+                "Review request rejected Outcome=MissingOrUnknownProvider Provider={Provider}",
                 request.Provider);
             return Results.BadRequest();
         }
@@ -66,21 +66,26 @@ public static class ReviewRequestEndpoint
             return Results.BadRequest();
         }
 
+        var provider = request.Provider.Value;
         var headSha = string.IsNullOrEmpty(request.HeadSha) ? null : request.HeadSha;
-        var prRef = new PullRequestRef(request.Owner, request.Repo, request.PrId, request.Title, request.Provider);
+        var prRef = new PullRequestRef(request.Owner, request.Repo, request.PrId, request.Title, provider);
         await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation(
             "Review request enqueued Provider={Provider} Outcome=Enqueued {Owner}/{Repo}#{PrId} sha={Sha} ({Title})",
-            request.Provider, request.Owner, request.Repo, request.PrId, headSha ?? "(force)", request.Title);
+            provider, request.Owner, request.Repo, request.PrId, headSha ?? "(force)", string.IsNullOrEmpty(request.Title) ? "(no title)" : request.Title);
 
         return Results.NoContent();
     }
 
     private static bool IsAuthorized(HttpContext context, string configuredToken, ILogger logger)
     {
+        var env = context.RequestServices.GetRequiredService<IHostEnvironment>();
         if (string.IsNullOrEmpty(configuredToken))
         {
+            if (!env.IsDevelopment())
+                return false;
+
             MissingTokenWarning.LogOnce(logger);
             return true;
         }
@@ -107,14 +112,14 @@ public static class ReviewRequestEndpoint
             if (Interlocked.Exchange(ref _logged, 1) == 0)
             {
                 logger.LogWarning(
-                    "Api:AccessToken is not configured — /reviews requests will not be authenticated. " +
-                    "Set the token via user-secrets or environment for production.");
+                    "Api:AccessToken is not configured — /reviews requests are unauthenticated. " +
+                    "This is allowed only in Development; non-Development hosts will fail at startup.");
             }
         }
     }
 
     private sealed record ReviewRequest(
-        Provider Provider,
+        Provider? Provider,
         string Owner,
         string Repo,
         int PrId,
