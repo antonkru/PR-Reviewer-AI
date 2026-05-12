@@ -59,15 +59,20 @@ public class Program
         app.MapBitbucketWebhook();
         app.MapGitHubWebhook();
 
-        app.MapGet("/", () => Results.Ok(new { service = "PR-Reviewer-AI", status = "ok" }));
+        app.MapGet("/", () => Results.Redirect("/health"));
 
-        app.MapGet("/health", () => Results.Ok(new
+        app.MapGet("/health", () => HealthCheckAsync());
+
+        app.Run();
+    }
+
+    private static IResult HealthCheckAsync()
+    {
+        return Results.Ok(new
         {
             service = "PR-Reviewer-AI",
             status = "ok",
             timestamp = DateTimeOffset.UtcNow,
-        }));
-
-        app.Run();
+        });
     }
 }
