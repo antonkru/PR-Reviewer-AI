@@ -1,6 +1,6 @@
 using FluentValidation;
 
-namespace PrReviewer.Api.GitHub;
+namespace PrReviewer.Api.SourceControlClients.GitHub;
 
 internal sealed class GitHubWebhookPayloadValidator : AbstractValidator<GitHubWebhookPayload>
 {

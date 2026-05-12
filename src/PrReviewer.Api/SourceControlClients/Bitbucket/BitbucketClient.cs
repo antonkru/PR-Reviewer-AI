@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
 
-namespace PrReviewer.Api.Bitbucket;
+namespace PrReviewer.Api.SourceControlClients.Bitbucket;
 
 public sealed class BitbucketClient : ISourceControlClient
 {

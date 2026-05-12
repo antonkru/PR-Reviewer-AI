@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace PrReviewer.Api.Bitbucket;
+namespace PrReviewer.Api.SourceControlClients.Bitbucket;
 
 internal sealed class WebhookPayload
 {

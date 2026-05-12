@@ -1,5 +1,5 @@
-using PrReviewer.Api.Bitbucket;
-using PrReviewer.Api.GitHub;
+using PrReviewer.Api.SourceControlClients.Bitbucket;
+using PrReviewer.Api.SourceControlClients.GitHub;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
 

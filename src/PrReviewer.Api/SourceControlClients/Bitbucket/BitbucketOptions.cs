@@ -1,4 +1,4 @@
-namespace PrReviewer.Api.Bitbucket;
+namespace PrReviewer.Api.SourceControlClients.Bitbucket;
 
 public sealed class BitbucketOptions
 {

@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
 
-namespace PrReviewer.Api.GitHub;
+namespace PrReviewer.Api.SourceControlClients.GitHub;
 
 public sealed class GitHubClient : ISourceControlClient
 {

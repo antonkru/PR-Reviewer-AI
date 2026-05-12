@@ -1,6 +1,6 @@
 using FluentValidation;
 
-namespace PrReviewer.Api.Bitbucket;
+namespace PrReviewer.Api.SourceControlClients.Bitbucket;
 
 internal sealed class BitbucketWebhookPayloadValidator : AbstractValidator<WebhookPayload>
 {

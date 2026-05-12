@@ -1,6 +1,6 @@
 using System.Text.Json;
 using FluentValidation;
-using PrReviewer.Api.GitHub;
+using PrReviewer.Api.SourceControlClients.GitHub;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
 

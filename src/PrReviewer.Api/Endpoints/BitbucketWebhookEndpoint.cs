@@ -1,6 +1,6 @@
 using System.Text.Json;
 using FluentValidation;
-using PrReviewer.Api.Bitbucket;
+using PrReviewer.Api.SourceControlClients.Bitbucket;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
 
