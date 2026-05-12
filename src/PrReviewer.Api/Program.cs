@@ -28,7 +28,7 @@ public class Program
         builder.Services.AddHttpClient<BitbucketClient>((sp, http) =>
         {
             var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BitbucketOptions>>().Value;
-            http.BaseAddress = new Uri("https://api.bitbucket.org/2.0/");
+            http.BaseAddress = new Uri(string.IsNullOrEmpty(opts.BaseAddress) ? "https://api.bitbucket.org/2.0/" : opts.BaseAddress);
             if (!string.IsNullOrEmpty(opts.AccessToken))
             {
                 http.DefaultRequestHeaders.Authorization =
