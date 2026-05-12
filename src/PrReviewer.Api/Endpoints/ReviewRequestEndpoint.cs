@@ -60,7 +60,10 @@ public static class ReviewRequestEndpoint
         if (request is null)
         {
             logger.LogWarning("Review request rejected Outcome=EmptyBody");
-            return Results.NoContent();
+            return Results.Problem(
+                detail: "Request body is required.",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Empty body");
         }
 
         var validation = await validator.ValidateAsync(request, ct);
