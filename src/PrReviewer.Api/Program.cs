@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+using System.Text.Json.Serialization;
 using PrReviewer.Agents;
 using PrReviewer.Api.Bitbucket;
 using PrReviewer.Api.Endpoints;
@@ -14,50 +14,33 @@ public class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
-        builder.Services.AddOptions<BitbucketOptions>()
-            .Bind(builder.Configuration.GetSection(BitbucketOptions.SectionName));
+        if (!builder.Environment.IsDevelopment() 
+            && string.IsNullOrEmpty(builder.Configuration[$"{ApiOptions.SectionName}:{nameof(ApiOptions.AccessToken)}"]))
+        {
+            throw new InvalidOperationException(
+                $"{ApiOptions.SectionName}:{nameof(ApiOptions.AccessToken)} must be configured outside the Development environment.");
+        }
 
-        builder.Services.AddOptions<GitHubOptions>()
-            .Bind(builder.Configuration.GetSection(GitHubOptions.SectionName));
+        builder.Services.AddOptions<ApiOptions>()
+            .Bind(builder.Configuration.GetSection(ApiOptions.SectionName));
+
+        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(options =>
+        {
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        });
 
         builder.Services.AddSingleton<BitbucketWebhookSignatureValidator>();
         builder.Services.AddSingleton<GitHubWebhookSignatureValidator>();
         builder.Services.AddSingleton<IReviewQueue, ChannelReviewQueue>();
-        builder.Services.AddSingleton<ISourceControlClientFactory, SourceControlClientFactory>();
 
-        builder.Services.AddHttpClient<BitbucketClient>((sp, http) =>
-        {
-            var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BitbucketOptions>>().Value;
-            http.BaseAddress = new Uri(string.IsNullOrEmpty(opts.BaseAddress) ? "https://api.bitbucket.org/2.0/" : opts.BaseAddress);
-            if (!string.IsNullOrEmpty(opts.AccessToken))
-            {
-                http.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", opts.AccessToken);
-            }
-            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        })
-        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
-
-        builder.Services.AddHttpClient<GitHubClient>((sp, http) =>
-        {
-            var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<GitHubOptions>>().Value;
-            http.BaseAddress = new Uri(string.IsNullOrEmpty(opts.BaseAddress) ? "https://api.github.com/" : opts.BaseAddress);
-            if (!string.IsNullOrEmpty(opts.AccessToken))
-            {
-                http.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", opts.AccessToken);
-            }
-            http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            var userAgent = string.IsNullOrWhiteSpace(opts.UserAgent) ? "PR-Reviewer-AI" : opts.UserAgent;
-            http.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
-        });
-
+        builder.Services.AddSourceControlClients(builder.Configuration);
         builder.Services.AddReviewerAgents(builder.Configuration);
 
         var app = builder.Build();
 
         app.MapBitbucketWebhook();
         app.MapGitHubWebhook();
+        app.MapReviewRequest();
 
         app.MapGet("/", () => Results.Redirect("/health"));
 

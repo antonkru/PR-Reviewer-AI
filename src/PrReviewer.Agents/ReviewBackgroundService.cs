@@ -38,13 +38,16 @@ public sealed class ReviewBackgroundService : BackgroundService
 
                 var sourceControl = _sourceControlFactory.For(job.Pr.Provider);
 
-                var comments = await sourceControl.GetPullRequestCommentsAsync(job.Pr, stoppingToken);
-                if (comments.Any(c => ReviewMarker.Matches(c.Body, job.HeadCommitSha)))
+                if (!string.IsNullOrEmpty(job.HeadCommitSha))
                 {
-                    _logger.LogInformation(
-                        "Skip {Provider} {Owner}/{Repo}#{PrId}: sha {Sha} already reviewed",
-                        job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
-                    continue;
+                    var comments = await sourceControl.GetPullRequestCommentsAsync(job.Pr, stoppingToken);
+                    if (comments.Any(c => ReviewMarker.Matches(c.Body, job.HeadCommitSha)))
+                    {
+                        _logger.LogInformation(
+                            "Skip {Provider} {Owner}/{Repo}#{PrId}: sha {Sha} already reviewed",
+                            job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
+                        continue;
+                    }
                 }
 
                 var diff = await sourceControl.GetPullRequestDiffAsync(job.Pr, stoppingToken);
@@ -57,7 +60,9 @@ public sealed class ReviewBackgroundService : BackgroundService
                 }
 
                 var result = await _reviewer.ReviewAsync(diff, stoppingToken);
-                var body = $"{result.Markdown}\n\n{ReviewMarker.Format(job.HeadCommitSha)}";
+                var body = string.IsNullOrEmpty(job.HeadCommitSha)
+                    ? result.Markdown
+                    : $"{result.Markdown}\n\n{ReviewMarker.Format(job.HeadCommitSha)}";
                 await sourceControl.PostPrCommentAsync(job.Pr, body, stoppingToken);
 
                 _logger.LogInformation(
