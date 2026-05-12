@@ -2,11 +2,11 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using PrReviewer.Api.Bitbucket;
+using PrReviewer.Api.GitHub;
 
-namespace PrReviewer.Tests.Bitbucket;
+namespace PrReviewer.Tests.GitHub;
 
-public sealed class BitbucketWebhookSignatureValidatorTests
+public sealed class GitHubWebhookSignatureValidatorTests
 {
     private const string Secret = "shhh-its-a-secret";
 
@@ -23,18 +23,8 @@ public sealed class BitbucketWebhookSignatureValidatorTests
     [Fact]
     public void Accepts_signature_with_sha256_prefix()
     {
-        var body = Encoding.UTF8.GetBytes("hello bitbucket");
+        var body = Encoding.UTF8.GetBytes("hello github");
         var signature = "sha256=" + ComputeHex(Secret, body);
-        var validator = CreateValidator(Secret);
-
-        Assert.True(validator.Validate(body, signature));
-    }
-
-    [Fact]
-    public void Accepts_bare_hex_signature_without_prefix()
-    {
-        var body = Encoding.UTF8.GetBytes("payload");
-        var signature = ComputeHex(Secret, body);
         var validator = CreateValidator(Secret);
 
         Assert.True(validator.Validate(body, signature));
@@ -76,10 +66,10 @@ public sealed class BitbucketWebhookSignatureValidatorTests
         Assert.False(validator.Validate(tampered, signature));
     }
 
-    private static BitbucketWebhookSignatureValidator CreateValidator(string secret)
+    private static GitHubWebhookSignatureValidator CreateValidator(string secret)
     {
-        var options = Options.Create(new BitbucketOptions { WebhookSecret = secret });
-        return new BitbucketWebhookSignatureValidator(options, NullLogger<BitbucketWebhookSignatureValidator>.Instance);
+        var options = Options.Create(new GitHubOptions { WebhookSecret = secret });
+        return new GitHubWebhookSignatureValidator(options, NullLogger<GitHubWebhookSignatureValidator>.Instance);
     }
 
     private static string ComputeHex(string secret, byte[] body)

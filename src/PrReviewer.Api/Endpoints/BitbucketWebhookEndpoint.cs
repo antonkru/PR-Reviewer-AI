@@ -23,7 +23,7 @@ public static class BitbucketWebhookEndpoint
 
     private static async Task<IResult> HandleAsync(
         HttpContext context,
-        WebhookSignatureValidator validator,
+        BitbucketWebhookSignatureValidator validator,
         IReviewQueue queue,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
@@ -68,36 +68,36 @@ public static class BitbucketWebhookEndpoint
             return Results.BadRequest();
         }
 
-        var workspace = payload?.Repository?.Workspace?.Slug;
+        var owner = payload?.Repository?.Workspace?.Slug;
         var repo = payload?.Repository?.Name;
         var prId = payload?.PullRequest?.Id ?? 0;
         var headSha = payload?.PullRequest?.Source?.Commit?.Hash;
 
-        if (string.IsNullOrEmpty(workspace) || string.IsNullOrEmpty(repo) || prId <= 0)
+        if (string.IsNullOrEmpty(owner) || string.IsNullOrEmpty(repo) || prId <= 0)
         {
             logger.LogWarning(
-                "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingRefs " +
-                "(workspace={Workspace} repo={Repo} prId={PrId})",
-                deliveryId, eventKey, workspace, repo, prId);
+                "Webhook rejected Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingRefs " +
+                "(owner={Owner} repo={Repo} prId={PrId})",
+                deliveryId, eventKey, owner, repo, prId);
             return Results.BadRequest();
         }
 
         if (string.IsNullOrEmpty(headSha))
         {
             logger.LogWarning(
-                "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingSha " +
-                "for {Workspace}/{Repo}#{PrId} — cannot dedup",
-                deliveryId, eventKey, workspace, repo, prId);
+                "Webhook rejected Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingSha " +
+                "for {Owner}/{Repo}#{PrId} — cannot dedup",
+                deliveryId, eventKey, owner, repo, prId);
             return Results.BadRequest();
         }
 
-        var prRef = new PullRequestRef(workspace, repo, prId, payload?.PullRequest?.Title);
+        var prRef = new PullRequestRef(owner, repo, prId, payload?.PullRequest?.Title, Provider.Bitbucket);
         await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation(
-            "Webhook enqueued DeliveryId={DeliveryId} EventKey={EventKey} Outcome=Enqueued " +
-            "{Workspace}/{Repo}#{PrId} sha={Sha} ({Title})",
-            deliveryId, eventKey, workspace, repo, prId, headSha, prRef.Title);
+            "Webhook enqueued Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=Enqueued " +
+            "{Owner}/{Repo}#{PrId} sha={Sha} ({Title})",
+            deliveryId, eventKey, owner, repo, prId, headSha, prRef.Title);
 
         return Results.NoContent();
     }

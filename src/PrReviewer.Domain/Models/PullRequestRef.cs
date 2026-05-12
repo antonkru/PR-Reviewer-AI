@@ -1,7 +1,8 @@
 namespace PrReviewer.Domain.Models;
 
 public sealed record PullRequestRef(
-    string Workspace,
+    string Owner,
     string RepoSlug,
     int PrId,
-    string? Title);
+    string? Title,
+    Provider Provider);

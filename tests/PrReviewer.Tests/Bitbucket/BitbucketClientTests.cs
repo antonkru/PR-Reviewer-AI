@@ -69,7 +69,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
         var client = new BitbucketClient(_http);
 
         var diff = await client.GetPullRequestDiffAsync(
-            new PullRequestRef("acme", "widgets", 42, null),
+            new PullRequestRef("acme", "widgets", 42, null, Provider.Bitbucket),
             CancellationToken.None);
 
         Assert.Equal(diffBody, diff);
@@ -95,7 +95,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
         var client = new BitbucketClient(_http);
 
         var diff = await client.GetPullRequestDiffAsync(
-            new PullRequestRef("ws", "repo", 1, null),
+            new PullRequestRef("ws", "repo", 1, null, Provider.Bitbucket),
             CancellationToken.None);
 
         Assert.Equal("the diff", diff);
@@ -115,7 +115,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
             client.GetPullRequestDiffAsync(
-                new PullRequestRef("ws", "repo", 9, null),
+                new PullRequestRef("ws", "repo", 9, null, Provider.Bitbucket),
                 CancellationToken.None));
     }
 
@@ -132,7 +132,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
             client.GetPullRequestDiffAsync(
-                new PullRequestRef("ws", "repo", 2, null),
+                new PullRequestRef("ws", "repo", 2, null, Provider.Bitbucket),
                 CancellationToken.None));
     }
 
@@ -150,7 +150,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
         var client = new BitbucketClient(_http);
 
         await client.PostPrCommentAsync(
-            new PullRequestRef("acme", "widgets", 7, null),
+            new PullRequestRef("acme", "widgets", 7, null, Provider.Bitbucket),
             markdown,
             CancellationToken.None);
 
@@ -174,7 +174,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
             client.PostPrCommentAsync(
-                new PullRequestRef("ws", "repo", 3, null),
+                new PullRequestRef("ws", "repo", 3, null, Provider.Bitbucket),
                 "anything",
                 CancellationToken.None));
     }
@@ -223,7 +223,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
 
         var client = new BitbucketClient(_http);
         var comments = await client.GetPullRequestCommentsAsync(
-            new PullRequestRef("ws", "repo", 5, null),
+            new PullRequestRef("ws", "repo", 5, null, Provider.Bitbucket),
             CancellationToken.None);
 
         Assert.Equal(2, comments.Count);
@@ -245,7 +245,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
 
         var client = new BitbucketClient(_http);
         var comments = await client.GetPullRequestCommentsAsync(
-            new PullRequestRef("ws", "repo", 6, null),
+            new PullRequestRef("ws", "repo", 6, null, Provider.Bitbucket),
             CancellationToken.None);
 
         Assert.Empty(comments);
@@ -264,7 +264,7 @@ public sealed class BitbucketClientTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>
             client.GetPullRequestCommentsAsync(
-                new PullRequestRef("ws", "repo", 8, null),
+                new PullRequestRef("ws", "repo", 8, null, Provider.Bitbucket),
                 CancellationToken.None));
     }
 }

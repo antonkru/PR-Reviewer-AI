@@ -8,18 +8,18 @@ namespace PrReviewer.Agents;
 public sealed class ReviewBackgroundService : BackgroundService
 {
     private readonly IReviewQueue _queue;
-    private readonly ISourceControlClient _sourceControl;
+    private readonly ISourceControlClientFactory _sourceControlFactory;
     private readonly IReviewerAgent _reviewer;
     private readonly ILogger<ReviewBackgroundService> _logger;
 
     public ReviewBackgroundService(
         IReviewQueue queue,
-        ISourceControlClient sourceControl,
+        ISourceControlClientFactory sourceControlFactory,
         IReviewerAgent reviewer,
         ILogger<ReviewBackgroundService> logger)
     {
         _queue = queue;
-        _sourceControl = sourceControl;
+        _sourceControlFactory = sourceControlFactory;
         _reviewer = reviewer;
         _logger = logger;
     }
@@ -33,34 +33,36 @@ public sealed class ReviewBackgroundService : BackgroundService
             try
             {
                 _logger.LogInformation(
-                    "Reviewing PR {Workspace}/{Repo}#{PrId} sha={Sha} (enqueued {EnqueuedAt:O})",
-                    job.Pr.Workspace, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha, job.EnqueuedAt);
+                    "Reviewing {Provider} PR {Owner}/{Repo}#{PrId} sha={Sha} (enqueued {EnqueuedAt:O})",
+                    job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha, job.EnqueuedAt);
 
-                var comments = await _sourceControl.GetPullRequestCommentsAsync(job.Pr, stoppingToken);
+                var sourceControl = _sourceControlFactory.For(job.Pr.Provider);
+
+                var comments = await sourceControl.GetPullRequestCommentsAsync(job.Pr, stoppingToken);
                 if (comments.Any(c => ReviewMarker.Matches(c.Body, job.HeadCommitSha)))
                 {
                     _logger.LogInformation(
-                        "Skip {Workspace}/{Repo}#{PrId}: sha {Sha} already reviewed",
-                        job.Pr.Workspace, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
+                        "Skip {Provider} {Owner}/{Repo}#{PrId}: sha {Sha} already reviewed",
+                        job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
                     continue;
                 }
 
-                var diff = await _sourceControl.GetPullRequestDiffAsync(job.Pr, stoppingToken);
+                var diff = await sourceControl.GetPullRequestDiffAsync(job.Pr, stoppingToken);
                 if (string.IsNullOrWhiteSpace(diff))
                 {
                     _logger.LogWarning(
-                        "Empty diff for PR {Workspace}/{Repo}#{PrId} sha={Sha} — skipping",
-                        job.Pr.Workspace, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
+                        "Empty diff for {Provider} PR {Owner}/{Repo}#{PrId} sha={Sha} — skipping",
+                        job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
                     continue;
                 }
 
                 var result = await _reviewer.ReviewAsync(diff, stoppingToken);
                 var body = $"{result.Markdown}\n\n{ReviewMarker.Format(job.HeadCommitSha)}";
-                await _sourceControl.PostPrCommentAsync(job.Pr, body, stoppingToken);
+                await sourceControl.PostPrCommentAsync(job.Pr, body, stoppingToken);
 
                 _logger.LogInformation(
-                    "Posted review comment on PR {Workspace}/{Repo}#{PrId} sha={Sha}",
-                    job.Pr.Workspace, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
+                    "Posted review comment on {Provider} PR {Owner}/{Repo}#{PrId} sha={Sha}",
+                    job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -70,8 +72,8 @@ public sealed class ReviewBackgroundService : BackgroundService
             {
                 _logger.LogError(
                     ex,
-                    "Review failed for PR {Workspace}/{Repo}#{PrId} sha={Sha}",
-                    job.Pr.Workspace, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
+                    "Review failed for {Provider} PR {Owner}/{Repo}#{PrId} sha={Sha}",
+                    job.Pr.Provider, job.Pr.Owner, job.Pr.RepoSlug, job.Pr.PrId, job.HeadCommitSha);
             }
         }
     }
