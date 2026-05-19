@@ -82,7 +82,7 @@ The service listens on `http://localhost:5279` (see `src/PrReviewer.Api/Properti
 
 `GET /` returns `{ "service": "PR-Reviewer-AI", "status": "ok" }` for a quick liveness check. `GET /health` includes a timestamp.
 
-## Expose to your provider via a dev tunnel
+## Expose to your source control provider via a dev tunnel
 
 Visual Studio Dev Tunnels (bundled with the .NET SDK):
 
