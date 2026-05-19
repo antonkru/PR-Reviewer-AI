@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace PrReviewer.Api.GitHub;
+namespace PrReviewer.Api.SourceControlClients.GitHub;
 
 internal sealed class GitHubWebhookPayload
 {

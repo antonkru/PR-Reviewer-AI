@@ -1,7 +1,7 @@
 using System.Net.Http.Headers;
 using Microsoft.Extensions.Options;
-using PrReviewer.Api.Bitbucket;
-using PrReviewer.Api.GitHub;
+using PrReviewer.Api.SourceControlClients.Bitbucket;
+using PrReviewer.Api.SourceControlClients.GitHub;
 using PrReviewer.Domain.Abstractions;
 
 namespace PrReviewer.Api.Infrastructure;

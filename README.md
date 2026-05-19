@@ -1,5 +1,9 @@
 # PR-Reviewer-AI
 
+```
+Status: This is a Proof of Concept. This project is Azure cloud ready but has only been tested locally.
+```
+
 A senior-developer "first pass" code review for pull requests, powered by an LLM via the Microsoft Agent Framework. Supports **Bitbucket Cloud** and **GitHub** in the same deployment.
 
 When a PR is created or updated, the provider fires a webhook to this service. The service fetches the diff, sends it to OpenAI through a `ChatClientAgent` configured with a senior-reviewer system prompt, and posts the response back as a top-level comment on the PR. A hidden marker (`<!-- pr-reviewer-ai: sha=... -->`) is appended so re-deliveries for the same commit don't double-post.
@@ -78,7 +82,7 @@ The service listens on `http://localhost:5279` (see `src/PrReviewer.Api/Properti
 
 `GET /` returns `{ "service": "PR-Reviewer-AI", "status": "ok" }` for a quick liveness check. `GET /health` includes a timestamp.
 
-## Expose to your provider via a dev tunnel
+## Expose to your source control provider via a dev tunnel
 
 Visual Studio Dev Tunnels (bundled with the .NET SDK):
 

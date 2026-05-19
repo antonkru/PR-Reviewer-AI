@@ -1,6 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
-using PrReviewer.Api.GitHub;
+using PrReviewer.Api.SourceControlClients.GitHub;
 using PrReviewer.Domain.Models;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;

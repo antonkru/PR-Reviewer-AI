@@ -2,17 +2,17 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PrReviewer.Api.Webhooks;
 
-namespace PrReviewer.Api.Bitbucket;
+namespace PrReviewer.Api.SourceControlClients.GitHub;
 
-public sealed class BitbucketWebhookSignatureValidator
+public sealed class GitHubWebhookSignatureValidator
 {
-    private readonly BitbucketOptions _options;
-    private readonly ILogger<BitbucketWebhookSignatureValidator> _logger;
+    private readonly GitHubOptions _options;
+    private readonly ILogger<GitHubWebhookSignatureValidator> _logger;
     private bool _missingSecretWarningLogged;
 
-    public BitbucketWebhookSignatureValidator(
-        IOptions<BitbucketOptions> options,
-        ILogger<BitbucketWebhookSignatureValidator> logger)
+    public GitHubWebhookSignatureValidator(
+        IOptions<GitHubOptions> options,
+        ILogger<GitHubWebhookSignatureValidator> logger)
     {
         _options = options.Value;
         _logger = logger;
@@ -25,7 +25,7 @@ public sealed class BitbucketWebhookSignatureValidator
             if (!_missingSecretWarningLogged)
             {
                 _logger.LogWarning(
-                    "Bitbucket:WebhookSecret is not configured — webhook signatures will not be verified. " +
+                    "GitHub:WebhookSecret is not configured — webhook signatures will not be verified. " +
                     "Set the secret via user-secrets or environment for production.");
                 _missingSecretWarningLogged = true;
             }

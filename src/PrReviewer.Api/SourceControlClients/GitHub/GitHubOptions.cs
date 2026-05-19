@@ -1,4 +1,4 @@
-namespace PrReviewer.Api.GitHub;
+namespace PrReviewer.Api.SourceControlClients.GitHub;
 
 public sealed class GitHubOptions
 {

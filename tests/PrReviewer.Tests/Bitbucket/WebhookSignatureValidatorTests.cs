@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using PrReviewer.Api.Bitbucket;
+using PrReviewer.Api.SourceControlClients.Bitbucket;
 
 namespace PrReviewer.Tests.Bitbucket;
 

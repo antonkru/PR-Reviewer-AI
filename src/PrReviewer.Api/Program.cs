@@ -1,9 +1,9 @@
-using System.Text.Json.Serialization;
+using FluentValidation;
 using PrReviewer.Agents;
-using PrReviewer.Api.Bitbucket;
 using PrReviewer.Api.Endpoints;
-using PrReviewer.Api.GitHub;
 using PrReviewer.Api.Infrastructure;
+using PrReviewer.Api.SourceControlClients.Bitbucket;
+using PrReviewer.Api.SourceControlClients.GitHub;
 using PrReviewer.Domain.Abstractions;
 
 namespace PrReviewer.Api;
@@ -24,14 +24,13 @@ public class Program
         builder.Services.AddOptions<ApiOptions>()
             .Bind(builder.Configuration.GetSection(ApiOptions.SectionName));
 
-        builder.Services.Configure<Microsoft.AspNetCore.Http.Json.JsonOptions>(options =>
-        {
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-        });
-
         builder.Services.AddSingleton<BitbucketWebhookSignatureValidator>();
         builder.Services.AddSingleton<GitHubWebhookSignatureValidator>();
         builder.Services.AddSingleton<IReviewQueue, ChannelReviewQueue>();
+
+        builder.Services.AddSingleton<IValidator<WebhookPayload>, BitbucketWebhookPayloadValidator>();
+        builder.Services.AddSingleton<IValidator<GitHubWebhookPayload>, GitHubWebhookPayloadValidator>();
+        builder.Services.AddSingleton<IValidator<ReviewRequest>, ReviewRequestValidator>();
 
         builder.Services.AddSourceControlClients(builder.Configuration);
         builder.Services.AddReviewerAgents(builder.Configuration);

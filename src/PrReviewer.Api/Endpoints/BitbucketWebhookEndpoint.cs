@@ -1,5 +1,6 @@
 using System.Text.Json;
-using PrReviewer.Api.Bitbucket;
+using FluentValidation;
+using PrReviewer.Api.SourceControlClients.Bitbucket;
 using PrReviewer.Domain.Abstractions;
 using PrReviewer.Domain.Models;
 
@@ -23,7 +24,8 @@ public static class BitbucketWebhookEndpoint
 
     private static async Task<IResult> HandleAsync(
         HttpContext context,
-        BitbucketWebhookSignatureValidator validator,
+        BitbucketWebhookSignatureValidator signatureValidator,
+        IValidator<WebhookPayload> payloadValidator,
         IReviewQueue queue,
         ILoggerFactory loggerFactory,
         CancellationToken ct)
@@ -46,7 +48,7 @@ public static class BitbucketWebhookEndpoint
         var rawBody = ms.ToArray();
 
         var signature = context.Request.Headers["X-Hub-Signature"].ToString();
-        if (!validator.Validate(rawBody, signature))
+        if (!signatureValidator.Validate(rawBody, signature))
         {
             logger.LogWarning(
                 "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=BadSignature",
@@ -65,33 +67,39 @@ public static class BitbucketWebhookEndpoint
                 ex,
                 "Webhook rejected DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MalformedJson",
                 deliveryId, eventKey);
-            return Results.BadRequest();
+            return Results.Problem(
+                detail: "Webhook payload rejected Outcome=MalformedJson",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Malformed JSON");
         }
 
-        var owner = payload?.Repository?.Workspace?.Slug;
-        var repo = payload?.Repository?.Name;
-        var prId = payload?.PullRequest?.Id ?? 0;
-        var headSha = payload?.PullRequest?.Source?.Commit?.Hash;
-
-        if (string.IsNullOrEmpty(owner) || string.IsNullOrEmpty(repo) || prId <= 0)
+        if (payload is null)
         {
             logger.LogWarning(
-                "Webhook rejected Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingRefs " +
-                "(owner={Owner} repo={Repo} prId={PrId})",
-                deliveryId, eventKey, owner, repo, prId);
-            return Results.BadRequest();
+                "Webhook rejected Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=EmptyBody",
+                deliveryId, eventKey);
+            return Results.Problem(
+                detail: "Request body is required.",
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Empty body");
         }
 
-        if (string.IsNullOrEmpty(headSha))
+        var validation = await payloadValidator.ValidateAsync(payload, ct);
+        if (!validation.IsValid)
         {
             logger.LogWarning(
-                "Webhook rejected Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=MissingSha " +
-                "for {Owner}/{Repo}#{PrId} — cannot dedup",
-                deliveryId, eventKey, owner, repo, prId);
-            return Results.BadRequest();
+                "Webhook rejected Provider=Bitbucket DeliveryId={DeliveryId} EventKey={EventKey} Outcome=InvalidPayload Errors={Errors}",
+                deliveryId, eventKey,
+                string.Join("; ", validation.Errors.Select(e => $"{e.PropertyName}: {e.ErrorMessage}")));
+            return Results.ValidationProblem(validation.ToDictionary());
         }
 
-        var prRef = new PullRequestRef(owner, repo, prId, payload?.PullRequest?.Title, Provider.Bitbucket);
+        var owner = payload.Repository!.Workspace!.Slug!;
+        var repo = payload.Repository.Name!;
+        var prId = payload.PullRequest!.Id;
+        var headSha = payload.PullRequest.Source!.Commit!.Hash!;
+
+        var prRef = new PullRequestRef(owner, repo, prId, payload.PullRequest.Title, Provider.Bitbucket);
         await queue.WriteAsync(new ReviewJob(prRef, headSha, DateTimeOffset.UtcNow), ct);
 
         logger.LogInformation(
