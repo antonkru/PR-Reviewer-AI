@@ -8,33 +8,23 @@ A senior-developer "first pass" code review for pull requests, powered by an LLM
 
 When a PR is created or updated, the provider fires a webhook to this service. The service fetches the diff, sends it to OpenAI through a `ChatClientAgent` configured with a senior-reviewer system prompt, and posts the response back as a top-level comment on the PR. A hidden marker (`<!-- pr-reviewer-ai: sha=... -->`) is appended so re-deliveries for the same commit don't double-post.
 
-## Solution layout
+## Endpoints
 
-```
-PR-Reviewer-AI.slnx
-src/
-  PrReviewer.Domain/      pure types + interfaces (no infra deps)
-                          Models/ PullRequestRef, ReviewJob, Provider, ...
-                          Abstractions/ ISourceControlClient, ISourceControlClientFactory, ...
-  PrReviewer.Agents/      Microsoft Agent Framework integration + background worker
-                          Prompts/SeniorDeveloperPrompt.md is the system prompt (embedded resource)
-  PrReviewer.Api/         ASP.NET Core minimal API host
-                          Bitbucket/      Bitbucket webhook DTOs + REST client + signature validator
-                          GitHub/         GitHub webhook DTOs + REST client + signature validator
-                          Webhooks/       shared HMAC-SHA256 verifier
-                          Endpoints/      /webhooks/bitbucket, /webhooks/github
-                          Infrastructure/ ChannelReviewQueue, SourceControlClientFactory
-tests/
-  PrReviewer.Tests/       xUnit + WireMock coverage for clients, validators, and the review pipeline
-```
+| Method | Path                  | Purpose                                                                  |
+|--------|-----------------------|--------------------------------------------------------------------------|
+| `GET`  | `/`                   | Redirects to `/health`                                                   |
+| `GET`  | `/health`             | Liveness probe — returns service name, status, and UTC timestamp         |
+| `POST` | `/webhooks/bitbucket` | Bitbucket Cloud pull-request webhook receiver (signature-verified)       |
+| `POST` | `/webhooks/github`    | GitHub pull-request webhook receiver (signature-verified)                |
+| `POST` | `/reviews`            | Manual review trigger — enqueue a job by PR ref (Bearer-token auth)      |
 
-References: `Api -> Agents -> Domain`. Provider-specific code lives only in `Api`; `Agents` and `Domain` are provider-agnostic. The background worker dispatches per-job through `ISourceControlClientFactory.For(job.Pr.Provider)`.
+See [Endpoint reference](#endpoint-reference) below for headers, payload schemas, and responses.
 
 ## Prerequisites
 
 - .NET 10 SDK
 - An OpenAI API key
-- For Bitbucket: a Bitbucket Cloud Repository (or Workspace) Access Token with `pullrequest:write` scope
+- For Bitbucket: a Repository or Workspace Access Token (Bitbucket Cloud) with `pullrequest:write` scope. A Repository token is the narrowest choice; use a Workspace token if one service instance handles PRs across multiple repos.
 - For GitHub: a Personal Access Token (fine-grained recommended) with **Pull requests: Read and write** and **Contents: Read** on the target repo(s) — the diff media type is gated on Contents, not Pull requests
 - A way to expose `http://localhost:5279` to the provider — Visual Studio Dev Tunnels or ngrok
 
@@ -46,17 +36,23 @@ Settings live under sections in `appsettings.json` (committed with empty placeho
 
 ```json
 {
-  "OpenAI":    { "ApiKey": "", "Model": "gpt-4o-mini", "MaxDiffChars": 200000 },
-  "Bitbucket": { "AccessToken": "", "WebhookSecret": "" },
+  "Api":       { "AccessToken": "" },
+  "OpenAI":    { "ApiKey": "", "Model": "gpt-5-mini", "MaxDiffChars": 200000 },
+  "Bitbucket": { "AccessToken": "", "WebhookSecret": "", "BaseAddress": "https://api.bitbucket.org/2.0/" },
   "GitHub":    { "AccessToken": "", "WebhookSecret": "", "UserAgent": "PR-Reviewer-AI", "BaseAddress": "https://api.github.com/" }
 }
 ```
+
+`Api:AccessToken` guards the manual `/reviews` endpoint (see [POST /reviews](#post-reviews)). `OpenAI:Model` accepts any chat-completions model the configured API key has access to.
 
 Set real values via user-secrets, scoped to the Api project:
 
 ```powershell
 dotnet user-secrets --project src/PrReviewer.Api init
 dotnet user-secrets --project src/PrReviewer.Api set "OpenAI:ApiKey"            "sk-..."
+
+# /reviews endpoint (required outside Development)
+dotnet user-secrets --project src/PrReviewer.Api set "Api:AccessToken"          "<random hex>"
 
 # Bitbucket (optional)
 dotnet user-secrets --project src/PrReviewer.Api set "Bitbucket:AccessToken"    "ATCTT..."
@@ -69,7 +65,7 @@ dotnet user-secrets --project src/PrReviewer.Api set "GitHub:WebhookSecret"     
 
 `GitHub:BaseAddress` defaults to `https://api.github.com/`; override it only for GitHub Enterprise.
 
-If `Bitbucket:WebhookSecret` or `GitHub:WebhookSecret` is left empty, signature verification for that provider is **skipped** with a startup warning. Acceptable while smoke-testing on a private dev tunnel; do not ship without it.
+If `Bitbucket:WebhookSecret` or `GitHub:WebhookSecret` is left empty, signature verification for that provider is **skipped** and a warning is logged the first time a webhook from that provider arrives. Acceptable while smoke-testing on a private dev tunnel; do not ship without it.
 
 ## Run locally
 
@@ -80,11 +76,11 @@ dotnet run --project src/PrReviewer.Api
 
 The service listens on `http://localhost:5279` (see `src/PrReviewer.Api/Properties/launchSettings.json`).
 
-`GET /` returns `{ "service": "PR-Reviewer-AI", "status": "ok" }` for a quick liveness check. `GET /health` includes a timestamp.
+`GET /` redirects (`302`) to `/health`. `GET /health` returns `{ "service": "PR-Reviewer-AI", "status": "ok", "timestamp": "..." }`.
 
 ## Expose to your source control provider via a dev tunnel
 
-Visual Studio Dev Tunnels (bundled with the .NET SDK):
+Visual Studio Dev Tunnels (ships with Visual Studio; available standalone as the `devtunnel` CLI):
 
 ```powershell
 devtunnel user login
@@ -124,6 +120,132 @@ The service handles the `pull_request` event with action `opened`, `synchronize`
 
 Save, then open or update a PR. Within ~30 seconds an AI review comment should appear.
 
+## Endpoint reference
+
+### `GET /`
+
+Returns a `302` redirect to `/health`. Convenient as a default landing path for uptime monitors that follow redirects.
+
+### `GET /health`
+
+Liveness probe.
+
+**Response `200 OK`**
+
+```json
+{
+  "service":   "PR-Reviewer-AI",
+  "status":    "ok",
+  "timestamp": "2026-05-19T12:34:56.789+00:00"
+}
+```
+
+### `POST /webhooks/bitbucket`
+
+Receives pull-request events from Bitbucket Cloud and enqueues a review job.
+
+**Headers**
+
+| Header              | Required | Notes |
+|---------------------|----------|-------|
+| `X-Event-Key`       | yes      | Only `pullrequest:created` and `pullrequest:updated` are processed; any other key returns `204` and is ignored |
+| `X-Hub-Signature`   | yes      | `sha256=<hex>` — HMAC-SHA256 of the raw request body keyed with `Bitbucket:WebhookSecret`. Verification is **skipped** (with a one-time warning on the first webhook) when the secret is empty |
+| `X-Request-UUID`    | no       | Bitbucket's delivery id — logged, not validated |
+
+**Body** — the standard Bitbucket pull-request payload. Required fields: `repository.workspace.slug`, `repository.name`, `pullrequest.id`, `pullrequest.source.commit.hash`.
+
+**Responses**
+
+| Status                       | When                                                              |
+|------------------------------|-------------------------------------------------------------------|
+| `204 No Content`             | Event handled and job enqueued, **or** event intentionally ignored |
+| `400 Bad Request` (problem+json) | Malformed JSON or empty body                                   |
+| `400 Bad Request` (validation problem) | Payload missing required fields                          |
+| `401 Unauthorized`           | Invalid signature                                                 |
+
+### `POST /webhooks/github`
+
+Receives pull-request events from GitHub and enqueues a review job.
+
+**Headers**
+
+| Header                  | Required | Notes |
+|-------------------------|----------|-------|
+| `X-GitHub-Event`        | yes      | Only `pull_request` is processed; any other event returns `204` |
+| `X-Hub-Signature-256`   | yes      | `sha256=<hex>` — HMAC-SHA256 of the raw body keyed with `GitHub:WebhookSecret`. Verification is **skipped** (with a one-time warning on the first webhook) when the secret is empty |
+| `X-GitHub-Delivery`     | no       | GitHub's delivery id — logged, not validated |
+
+**Body** — the standard GitHub `pull_request` payload. `action` must be `opened`, `synchronize`, or `reopened` (other actions return `204` and are ignored). Required fields: `repository.owner.login`, `repository.name`, `pull_request.number`, `pull_request.head.sha`.
+
+**Responses**
+
+| Status                       | When                                                              |
+|------------------------------|-------------------------------------------------------------------|
+| `204 No Content`             | Event handled and job enqueued, **or** event/action ignored        |
+| `400 Bad Request`            | Malformed JSON                                                    |
+| `400 Bad Request` (validation problem) | Payload missing required fields                          |
+| `401 Unauthorized`           | Invalid signature                                                 |
+
+### `POST /reviews`
+
+Manually enqueue a review job. Useful for backfills, scripted tests, and re-running a review for a specific commit without going through a provider webhook.
+
+**Authentication** — `Authorization: Bearer <Api:AccessToken>`, compared in constant time. In **Development** a missing `Api:AccessToken` allows unauthenticated requests (with a one-time warning); outside Development the host **fails at startup** if it isn't set. Configure it via user-secrets:
+
+```powershell
+dotnet user-secrets --project src/PrReviewer.Api set "Api:AccessToken" "<random hex>"
+```
+
+**Headers**
+
+| Header          | Required | Notes |
+|-----------------|----------|-------|
+| `Content-Type`  | yes      | `application/json` |
+| `Authorization` | yes\*    | `Bearer <token>` — \*optional in Development if `Api:AccessToken` is unset |
+
+**Body**
+
+```json
+{
+  "provider": "Bitbucket",
+  "owner":    "my-workspace",
+  "repo":     "my-repo",
+  "prId":     42,
+  "headSha":  "abc1234...",
+  "title":    "Optional PR title for log lines"
+}
+```
+
+| Field      | Type   | Required | Notes |
+|------------|--------|----------|-------|
+| `provider` | string | yes      | `Bitbucket` or `GitHub` (case-insensitive) |
+| `owner`    | string | yes      | Workspace slug (Bitbucket) or owner login (GitHub) |
+| `repo`     | string | yes      | Repository slug/name |
+| `prId`     | int    | yes      | Must be greater than `0` |
+| `headSha`  | string | no       | Omit to force a re-review of the current head (bypasses the dedup marker) |
+| `title`    | string | no       | Echoed into log lines for readability |
+
+**Responses**
+
+| Status                         | When                                                              |
+|--------------------------------|-------------------------------------------------------------------|
+| `204 No Content`               | Job enqueued                                                      |
+| `400 Bad Request` (problem+json) | Malformed JSON or empty body                                   |
+| `400 Bad Request` (validation problem) | Missing/invalid fields                                   |
+| `415 Unsupported Media Type`   | Wrong `Content-Type`                                              |
+| `401 Unauthorized`             | Missing or invalid bearer token                                   |
+
+**Example**
+
+```powershell
+curl -X POST http://localhost:5279/reviews `
+  -H "Authorization: Bearer $env:PR_REVIEWER_TOKEN" `
+  -H "Content-Type: application/json" `
+  -d '{ "provider": "GitHub", "owner": "antonkru", "repo": "PR-Reviewer-AI", "prId": 7 }'
+```
+
+Omitting `headSha` (as above) forces a re-review of the current head; the posted comment will not include a dedup marker, so subsequent webhooks for that SHA will still be reviewed.
+
 ## Behavior reference
 
 | Situation | HTTP response | Side effect |
@@ -150,6 +272,7 @@ Covers: HMAC signature validation per provider, BitbucketClient + GitHubClient R
 ## Out of scope (POC)
 
 - Inline comments (top-level Markdown summary only)
+- Deep code analysis — the POC only looks at the PR diff; it does not fetch surrounding files, walk call graphs, or reason about repo-wide impact
 - GitHub App authentication (PAT only — fine for POC; per-installation tokens are the production path)
 - Persistent job queue / retry / DLQ (in-process Channel; restart loses pending jobs)
 - Azure deployment
