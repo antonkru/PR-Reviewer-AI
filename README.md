@@ -24,7 +24,7 @@ See [Endpoint reference](#endpoint-reference) below for headers, payload schemas
 
 - .NET 10 SDK
 - An OpenAI API key
-- For Bitbucket: a Bitbucket Cloud Repository (or Workspace) Access Token with `pullrequest:write` scope
+- For Bitbucket: a Repository or Workspace Access Token (Bitbucket Cloud) with `pullrequest:write` scope. A Repository token is the narrowest choice; use a Workspace token if one service instance handles PRs across multiple repos.
 - For GitHub: a Personal Access Token (fine-grained recommended) with **Pull requests: Read and write** and **Contents: Read** on the target repo(s) — the diff media type is gated on Contents, not Pull requests
 - A way to expose `http://localhost:5279` to the provider — Visual Studio Dev Tunnels or ngrok
 
@@ -36,17 +36,23 @@ Settings live under sections in `appsettings.json` (committed with empty placeho
 
 ```json
 {
-  "OpenAI":    { "ApiKey": "", "Model": "gpt-4o-mini", "MaxDiffChars": 200000 },
-  "Bitbucket": { "AccessToken": "", "WebhookSecret": "" },
+  "Api":       { "AccessToken": "" },
+  "OpenAI":    { "ApiKey": "", "Model": "gpt-5-mini", "MaxDiffChars": 200000 },
+  "Bitbucket": { "AccessToken": "", "WebhookSecret": "", "BaseAddress": "https://api.bitbucket.org/2.0/" },
   "GitHub":    { "AccessToken": "", "WebhookSecret": "", "UserAgent": "PR-Reviewer-AI", "BaseAddress": "https://api.github.com/" }
 }
 ```
+
+`Api:AccessToken` guards the manual `/reviews` endpoint (see [POST /reviews](#post-reviews)). `OpenAI:Model` accepts any chat-completions model the configured API key has access to.
 
 Set real values via user-secrets, scoped to the Api project:
 
 ```powershell
 dotnet user-secrets --project src/PrReviewer.Api init
 dotnet user-secrets --project src/PrReviewer.Api set "OpenAI:ApiKey"            "sk-..."
+
+# /reviews endpoint (required outside Development)
+dotnet user-secrets --project src/PrReviewer.Api set "Api:AccessToken"          "<random hex>"
 
 # Bitbucket (optional)
 dotnet user-secrets --project src/PrReviewer.Api set "Bitbucket:AccessToken"    "ATCTT..."
@@ -59,7 +65,7 @@ dotnet user-secrets --project src/PrReviewer.Api set "GitHub:WebhookSecret"     
 
 `GitHub:BaseAddress` defaults to `https://api.github.com/`; override it only for GitHub Enterprise.
 
-If `Bitbucket:WebhookSecret` or `GitHub:WebhookSecret` is left empty, signature verification for that provider is **skipped** with a startup warning. Acceptable while smoke-testing on a private dev tunnel; do not ship without it.
+If `Bitbucket:WebhookSecret` or `GitHub:WebhookSecret` is left empty, signature verification for that provider is **skipped** and a warning is logged the first time a webhook from that provider arrives. Acceptable while smoke-testing on a private dev tunnel; do not ship without it.
 
 ## Run locally
 
@@ -70,11 +76,11 @@ dotnet run --project src/PrReviewer.Api
 
 The service listens on `http://localhost:5279` (see `src/PrReviewer.Api/Properties/launchSettings.json`).
 
-`GET /` returns `{ "service": "PR-Reviewer-AI", "status": "ok" }` for a quick liveness check. `GET /health` includes a timestamp.
+`GET /` redirects (`302`) to `/health`. `GET /health` returns `{ "service": "PR-Reviewer-AI", "status": "ok", "timestamp": "..." }`.
 
 ## Expose to your source control provider via a dev tunnel
 
-Visual Studio Dev Tunnels (bundled with the .NET SDK):
+Visual Studio Dev Tunnels (ships with Visual Studio; available standalone as the `devtunnel` CLI):
 
 ```powershell
 devtunnel user login
@@ -114,28 +120,6 @@ The service handles the `pull_request` event with action `opened`, `synchronize`
 
 Save, then open or update a PR. Within ~30 seconds an AI review comment should appear.
 
-## Solution layout
-
-```
-PR-Reviewer-AI.slnx
-src/
-  PrReviewer.Domain/      pure types + interfaces (no infra deps)
-                          Models/ PullRequestRef, ReviewJob, Provider, ...
-                          Abstractions/ ISourceControlClient, ISourceControlClientFactory, ...
-  PrReviewer.Agents/      Microsoft Agent Framework integration + background worker
-                          Prompts/SeniorDeveloperPrompt.md is the system prompt (embedded resource)
-  PrReviewer.Api/         ASP.NET Core minimal API host
-                          Bitbucket/      Bitbucket webhook DTOs + REST client + signature validator
-                          GitHub/         GitHub webhook DTOs + REST client + signature validator
-                          Webhooks/       shared HMAC-SHA256 verifier
-                          Endpoints/      /webhooks/bitbucket, /webhooks/github
-                          Infrastructure/ ChannelReviewQueue, SourceControlClientFactory
-tests/
-  PrReviewer.Tests/       xUnit + WireMock coverage for clients, validators, and the review pipeline
-```
-
-References: `Api -> Agents -> Domain`. Provider-specific code lives only in `Api`; `Agents` and `Domain` are provider-agnostic. The background worker dispatches per-job through `ISourceControlClientFactory.For(job.Pr.Provider)`.
-
 ## Endpoint reference
 
 ### `GET /`
@@ -165,7 +149,7 @@ Receives pull-request events from Bitbucket Cloud and enqueues a review job.
 | Header              | Required | Notes |
 |---------------------|----------|-------|
 | `X-Event-Key`       | yes      | Only `pullrequest:created` and `pullrequest:updated` are processed; any other key returns `204` and is ignored |
-| `X-Hub-Signature`   | yes      | `sha256=<hex>` — HMAC-SHA256 of the raw request body keyed with `Bitbucket:WebhookSecret`. Verification is **skipped** (with a startup warning) when the secret is empty |
+| `X-Hub-Signature`   | yes      | `sha256=<hex>` — HMAC-SHA256 of the raw request body keyed with `Bitbucket:WebhookSecret`. Verification is **skipped** (with a one-time warning on the first webhook) when the secret is empty |
 | `X-Request-UUID`    | no       | Bitbucket's delivery id — logged, not validated |
 
 **Body** — the standard Bitbucket pull-request payload. Required fields: `repository.workspace.slug`, `repository.name`, `pullrequest.id`, `pullrequest.source.commit.hash`.
@@ -188,7 +172,7 @@ Receives pull-request events from GitHub and enqueues a review job.
 | Header                  | Required | Notes |
 |-------------------------|----------|-------|
 | `X-GitHub-Event`        | yes      | Only `pull_request` is processed; any other event returns `204` |
-| `X-Hub-Signature-256`   | yes      | `sha256=<hex>` — HMAC-SHA256 of the raw body keyed with `GitHub:WebhookSecret`. Verification is **skipped** (with a startup warning) when the secret is empty |
+| `X-Hub-Signature-256`   | yes      | `sha256=<hex>` — HMAC-SHA256 of the raw body keyed with `GitHub:WebhookSecret`. Verification is **skipped** (with a one-time warning on the first webhook) when the secret is empty |
 | `X-GitHub-Delivery`     | no       | GitHub's delivery id — logged, not validated |
 
 **Body** — the standard GitHub `pull_request` payload. `action` must be `opened`, `synchronize`, or `reopened` (other actions return `204` and are ignored). Required fields: `repository.owner.login`, `repository.name`, `pull_request.number`, `pull_request.head.sha`.
@@ -250,6 +234,17 @@ dotnet user-secrets --project src/PrReviewer.Api set "Api:AccessToken" "<random 
 | `400 Bad Request` (validation problem) | Missing/invalid fields                                   |
 | `415 Unsupported Media Type`   | Wrong `Content-Type`                                              |
 | `401 Unauthorized`             | Missing or invalid bearer token                                   |
+
+**Example**
+
+```powershell
+curl -X POST http://localhost:5279/reviews `
+  -H "Authorization: Bearer $env:PR_REVIEWER_TOKEN" `
+  -H "Content-Type: application/json" `
+  -d '{ "provider": "GitHub", "owner": "antonkru", "repo": "PR-Reviewer-AI", "prId": 7 }'
+```
+
+Omitting `headSha` (as above) forces a re-review of the current head; the posted comment will not include a dedup marker, so subsequent webhooks for that SHA will still be reviewed.
 
 ## Behavior reference
 
