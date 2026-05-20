@@ -1,8 +1,6 @@
 # PR-Reviewer-AI
 
-```
-Status: This is a Proof of Concept. This project is Azure cloud ready but has only been tested locally.
-```
+> **Note: This is a Proof of Concept. This project is Azure cloud ready but has only been tested locally.**
 
 A senior-developer "first pass" code review for pull requests, powered by an LLM via the Microsoft Agent Framework. Supports **Bitbucket Cloud** and **GitHub** in the same deployment.
 
