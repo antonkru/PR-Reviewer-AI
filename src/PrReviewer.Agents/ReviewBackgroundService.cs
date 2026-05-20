@@ -50,6 +50,8 @@ public sealed class ReviewBackgroundService : BackgroundService
                     }
                 }
 
+                await sourceControl.PostPrCommentAsync(job.Pr, "AI code review started...", stoppingToken);
+
                 var diff = await sourceControl.GetPullRequestDiffAsync(job.Pr, stoppingToken);
                 if (string.IsNullOrWhiteSpace(diff))
                 {
