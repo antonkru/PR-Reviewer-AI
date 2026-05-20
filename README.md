@@ -6,6 +6,14 @@ A senior-developer "first pass" code review for pull requests, powered by an LLM
 
 When a PR is created or updated, the provider fires a webhook to this service. The service fetches the diff, sends it to OpenAI through a `ChatClientAgent` configured with a senior-reviewer system prompt, and posts the response back as a top-level comment on the PR. A hidden marker (`<!-- pr-reviewer-ai: sha=... -->`) is appended so re-deliveries for the same commit don't double-post.
 
+## Out of scope for POC
+
+- Inline comments (top-level Markdown summary only)
+- Deep code analysis — the POC only looks at the PR diff; it does not fetch surrounding files, walk call graphs, or reason about repo-wide impact
+- GitHub App authentication (PAT only — fine for POC; per-installation tokens are the production path)
+- Persistent job queue / retry / DLQ (in-process Channel; restart loses pending jobs)
+- Azure deployment
+
 ## Endpoints
 
 | Method | Path                  | Purpose                                                                  |
@@ -267,10 +275,3 @@ dotnet test tests/PrReviewer.Tests/PrReviewer.Tests.csproj
 
 Covers: HMAC signature validation per provider, BitbucketClient + GitHubClient REST behavior via WireMock, comment-marker dedup, and per-job provider dispatch in the background worker.
 
-## Out of scope (POC)
-
-- Inline comments (top-level Markdown summary only)
-- Deep code analysis — the POC only looks at the PR diff; it does not fetch surrounding files, walk call graphs, or reason about repo-wide impact
-- GitHub App authentication (PAT only — fine for POC; per-installation tokens are the production path)
-- Persistent job queue / retry / DLQ (in-process Channel; restart loses pending jobs)
-- Azure deployment
